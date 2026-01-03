@@ -21,6 +21,9 @@ const extractJSON = (text: string): string => {
   }
 };
 
+/**
+ * findNearbyFacilities uses googleMaps which is only supported in Gemini 2.5 series models.
+ */
 export const findNearbyFacilities = async (
   location: { latitude: number; longitude: number },
   language: string = "English"
@@ -28,13 +31,13 @@ export const findNearbyFacilities = async (
   const ai = getAI();
   
   const systemInstruction = `
-    You are "CareNav Locator". Find the closest medical facilities and local ambulance numbers.
-    Use short, calm, helpful sentences. Respond in ${language}.
+    You are "CareNav Locator". Find the closest medical facilities and verified local ambulance numbers.
+    Use professional, calm, and helpful sentences. Respond in ${language}.
 
     STRICT RULES:
-    1. Only show facilities within the IMMEDIATE city area of Lat ${location.latitude}, Lng ${location.longitude}.
-    2. Provide local ambulance contact numbers using grounding.
-    3. No diagnoses.
+    1. Only show facilities within the city area of Lat ${location.latitude}, Lng ${location.longitude}.
+    2. Provide local ambulance contact numbers.
+    3. No diagnoses. Avoid alarmist language.
 
     OUTPUT FORMAT (JSON ONLY):
     {
@@ -57,12 +60,13 @@ export const findNearbyFacilities = async (
   `;
 
   try {
-    // Maps grounding is only supported in Gemini 2.5 series models.
     const response = await ai.models.generateContent({
+      // Maps grounding is only supported in Gemini 2.5 series models.
       model: "gemini-2.5-flash",
-      contents: `Find medical facilities and ambulances near Lat ${location.latitude}, Lng ${location.longitude}.`,
+      contents: `Find medical clinics, pharmacies, and ambulances near Lat ${location.latitude}, Lng ${location.longitude}.`,
       config: {
         systemInstruction,
+        // tools: googleMaps may be used with googleSearch, but not with any other tools.
         tools: [{ googleMaps: {} }, { googleSearch: {} }],
         toolConfig: {
           retrievalConfig: {
@@ -72,6 +76,7 @@ export const findNearbyFacilities = async (
             }
           }
         }
+        // responseMimeType is not allowed when using the googleMaps tool.
       },
     });
 
@@ -88,6 +93,9 @@ export const findNearbyFacilities = async (
   }
 };
 
+/**
+ * analyzeSymptoms uses googleMaps which is only supported in Gemini 2.5 series models.
+ */
 export const analyzeSymptoms = async (
   profile: UserProfile,
   location?: { latitude: number; longitude: number }
@@ -95,21 +103,22 @@ export const analyzeSymptoms = async (
   const ai = getAI();
   
   const systemInstruction = `
-    You are "CareNav", an AI guidance system. 
-    Analyze user reports and categorize into: "Routine Observation", "Professional Evaluation Recommended", or "Immediate Care Support".
+    You are "CareNav", an AI guidance system focused on calm health support.
+    Analyze user reports and categorize ONLY into: "Routine Observation", "Professional Evaluation Recommended", or "Immediate Care Support".
 
     STRICT RULES:
-    1. NEVER use words like "serious", "critical", "dangerous", "fatal", "risk", or "emergency".
-    2. NEVER name any diseases or provide a diagnosis.
-    3. Use calm, reassuring language focused on next steps.
-    4. Categorize as "Immediate Care Support" if prompt action is advised.
-    5. Respond in ${profile.language}. Handle transliterated inputs naturally.
+    1. NEVER use alarmist words like "serious", "critical", "dangerous", "fatal", "risk", "emergency", "deadly".
+    2. NEVER provide a medical diagnosis or disease name.
+    3. MANDATORY: You must always provide a detailed "supportDescription". 
+    4. If the input is very brief or vague (e.g., just "Fever"), provide a general guidance summary for that symptom and ask the user to note specific details (duration, intensity) for their next evaluation.
+    5. "Immediate Care Support" is for situations where prompt facility visit is advised.
+    6. Respond in ${profile.language}. Support transliterated inputs like "naku thala nopi".
 
     OUTPUT FORMAT:
     {
       "guidanceLevel": "Routine Observation" | "Professional Evaluation Recommended" | "Immediate Care Support",
-      "explanation": "string",
-      "recommendedAction": "string",
+      "supportDescription": "A calm and detailed description of the guidance needed based on the symptoms.",
+      "recommendedAction": "The key next step the user should take.",
       "isImmediate": boolean,
       "languageDetected": "string",
       "nearbyHospitals": [...],
@@ -120,8 +129,8 @@ export const analyzeSymptoms = async (
   const prompt = `User reports: ${profile.symptoms}. Age ${profile.age || 'Unknown'}. Location: ${location ? `Lat ${location.latitude}, Lng ${location.longitude}` : "Unknown"}.`;
 
   try {
-    // Maps grounding is only supported in Gemini 2.5 series models.
     const response = await ai.models.generateContent({
+      // Maps grounding is only supported in Gemini 2.5 series models.
       model: "gemini-2.5-flash",
       contents: prompt,
       config: {
@@ -152,21 +161,25 @@ export const analyzeSymptoms = async (
   }
 };
 
+/**
+ * analyzeReceipt uses googleSearch with structured JSON output.
+ */
 export const analyzeReceipt = async (
   base64Image: string,
   mimeType: string,
   location?: { latitude: number; longitude: number }
 ): Promise<{ result: ReceiptAnalysisResult; groundingMetadata?: any }> => {
   const ai = getAI();
-  const systemInstruction = `You are "CareNav Auditor". Analyze medical bills for regional fairness using current market pricing standards. Be calm and helpful. Return JSON.`;
+  const systemInstruction = `You are "CareNav Auditor". Review medical receipts for regional fee clarity and extract key billing data including hospital name and the specific date of service. Return JSON.`;
 
   try {
     const response = await ai.models.generateContent({
+      // Complex text task (reasoning over receipt image)
       model: "gemini-3-pro-preview",
       contents: {
         parts: [
           { inlineData: { data: base64Image, mimeType } },
-          { text: "Analyze this bill for regional fairness comparing it with typical local costs: " + (location ? `Lat ${location.latitude}, Lng ${location.longitude}` : "Unknown") }
+          { text: "Compare this bill with regional pricing standards. Extract hospital name, date of service, and total fees: " + (location ? `Lat ${location.latitude}, Lng ${location.longitude}` : "Unknown") }
         ]
       },
       config: {
@@ -176,13 +189,14 @@ export const analyzeReceipt = async (
           type: Type.OBJECT,
           properties: {
             hospitalName: { type: Type.STRING },
+            dateOfService: { type: Type.STRING, description: "The date the medical services were provided, as found on the bill." },
             detectedFees: { type: Type.STRING },
             isFair: { type: Type.BOOLEAN },
             explanation: { type: Type.STRING },
             fairRange: { type: Type.STRING },
             suggestions: { type: Type.ARRAY, items: { type: Type.STRING } }
           },
-          required: ["hospitalName", "detectedFees", "isFair", "explanation", "fairRange", "suggestions"]
+          required: ["hospitalName", "dateOfService", "detectedFees", "isFair", "explanation", "fairRange", "suggestions"]
         },
         tools: [{ googleSearch: {} }]
       }
@@ -203,7 +217,7 @@ const handleAIError = (e: any): AppError => {
   return {
     type: 'AI_PROCESSING',
     message: 'System Pause',
-    details: 'The analysis is taking a moment. Please retry in a few seconds.',
+    details: 'The analysis is processing. Please retry in a moment for complete guidance.',
     canRetry: true
   };
 };

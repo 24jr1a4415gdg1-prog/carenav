@@ -23,7 +23,7 @@ export interface HospitalInfo {
 
 export interface HealthAnalysis {
   guidanceLevel: GuidanceLevel;
-  explanation: string;
+  supportDescription: string;
   recommendedAction: string;
   isImmediate: boolean;
   languageDetected: string;
@@ -39,6 +39,7 @@ export interface NearbyHospitalsResponse {
 
 export interface ReceiptAnalysisResult {
   hospitalName: string;
+  dateOfService: string;
   detectedFees: string;
   isFair: boolean;
   explanation: string;
@@ -58,7 +59,6 @@ export interface GroundingChunk {
     uri: string;
     title: string;
   };
-  // Added web property to comply with Google Search grounding requirements
   web?: {
     uri: string;
     title: string;

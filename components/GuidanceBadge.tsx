@@ -2,11 +2,11 @@
 import React from 'react';
 import { GuidanceLevel } from '../types';
 
-interface RiskBadgeProps {
+interface GuidanceBadgeProps {
   level: GuidanceLevel;
 }
 
-const RiskBadge: React.FC<RiskBadgeProps> = ({ level }) => {
+const GuidanceBadge: React.FC<GuidanceBadgeProps> = ({ level }) => {
   const styles = {
     [GuidanceLevel.ROUTINE]: "bg-white/20 text-white border-white/30",
     [GuidanceLevel.EVALUATION]: "bg-indigo-400 text-white border-indigo-300",
@@ -45,4 +45,4 @@ const RiskBadge: React.FC<RiskBadgeProps> = ({ level }) => {
   );
 };
 
-export default RiskBadge;
+export default GuidanceBadge;
