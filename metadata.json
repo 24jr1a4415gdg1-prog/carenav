@@ -1,0 +1,7 @@
+{
+  "name": "CareNav",
+  "description": "A calm, guidance-based health assistant that provides routine care steps and helps locate nearby facilities.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
